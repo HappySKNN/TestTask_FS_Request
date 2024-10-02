@@ -9,4 +9,10 @@
     <Compile Include="Program.fs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Akka.FSharp" Version="1.5.29" />
+    <PackageReference Include="FsToolkit.ErrorHandling" Version="4.17.0" />
+    <PackageReference Include="FsToolkit.ErrorHandling.TaskResult" Version="4.17.0" />
+  </ItemGroup>
+
 </Project>
