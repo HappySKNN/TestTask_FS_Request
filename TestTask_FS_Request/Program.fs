@@ -1,7 +1,8 @@
-﻿open Akka.FSharp
-open System.Net
+﻿open System.Net
 open System.Net.Http
+open System.Threading
 open System.Threading.Tasks
+open Akka.FSharp
 open FsToolkit.ErrorHandling
 
 
@@ -17,48 +18,72 @@ type MessageType =
     | Request of URL: string * Method: string
     | CancelRequest
 
-let DoRequest (url: string) (method: string) =
+let DoRequest listener (cancellationToken: CancellationToken) (url: string) (method: string) =
     taskResult{
         use client = new HttpClient()
-        let httpMethod = HttpMethod(method)
-        let requestMessage = new HttpRequestMessage(httpMethod, url)
 
-        let! response = client.SendAsync(requestMessage)
-        
+        let requestMessage = new HttpRequestMessage(HttpMethod(method.ToUpper()), url)
+        let! response = client.SendAsync(requestMessage, cancellationToken)
+
         do! response.StatusCode = HttpStatusCode.OK |> Result.requireTrue AppError.UnsuccessStatusCode
-        
+  
         let! body = response.Content.ReadAsStringAsync()
-        printfn "%s" body
+        listener <! body
     }
-    |> Async.AwaitTask
+    |> TaskResult.teeError(fun error ->
+            listener <! (error |> AppError.ToMessage))
+    |> TaskResult.ignoreError
+    :> Task
 
+let Requester listener (mailbox: Actor<MessageType>) =
+    let mutable token = new CancellationTokenSource()
+
+    let rec loop() = actor {
+        let! message = mailbox.Receive()
+
+        Akka.Dispatch.ActorTaskScheduler.RunTask(fun () ->
+        async{
+                match message with
+                | MessageType.Request(url, method) -> 
+                    do (DoRequest listener token.Token url method) |> ignore
+                | MessageType.CancelRequest ->
+                    token.Cancel()
+                    token <- new CancellationTokenSource()
+        }
+        |> Async.StartAsTask
+        :> Task
+        )
+
+        return! loop()    
+    }
+
+    loop()
+
+let Listener (mailbox: Actor<string>) =
+    let rec loop() = actor {
+        let! message = mailbox.Receive()
+
+        match message with
+        | msg -> 
+            printf "%s" msg
+
+        return! loop()
+    }
+
+    loop()
 
 [<EntryPoint>]
 let main argv =
     use system = System.create "RequestIO-system" (Configuration.load())
-    
-    let RequestActor = spawn system "requester" <| fun mailbox ->
-            let rec loop() = actor{
-                let! message = mailbox.Receive()
-                Akka.Dispatch.ActorTaskScheduler.RunTask(fun () ->
-                taskResult{
-                     match message with
-                     | MessageType.Request(url, method) -> do! DoRequest url method
+    let ListenerActor = spawn system "listener" Listener
+    let RequestActor = spawn system "requester" (Requester ListenerActor)
 
-                     
-                }
-                |> TaskResult.teeError(fun error ->
-                    printfn "%s" (error |> AppError.ToMessage))
-                |> TaskResult.ignoreError
-                :> Task
-                )
+    RequestActor <! MessageType.Request("https://google.com", "GET")
+    RequestActor <! MessageType.CancelRequest
+    RequestActor <! MessageType.Request("https://ya.ru", "GET")
 
-                return! loop()    
-            }
-            loop()
+    System.Console.ReadLine() |> ignore
 
-    RequestActor <! MessageType.Request("https://google.com/", "GET")
-    
     0
 
 
