@@ -6,12 +6,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="ListenerActor.fs" />
+    <Compile Include="Types.fs" />
+    <Compile Include="RequestActor.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Akka" Version="1.5.29" />
-    <PackageReference Include="Akka.FSharp" Version="1.5.29" />
+    <PackageReference Include="Akka" Version="1.5.30" />
+    <PackageReference Include="Akka.FSharp" Version="1.5.30" />
     <PackageReference Include="FsToolkit.ErrorHandling" Version="4.17.0" />
     <PackageReference Include="FsToolkit.ErrorHandling.TaskResult" Version="4.17.0" />
   </ItemGroup>
